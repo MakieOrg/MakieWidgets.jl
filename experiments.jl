@@ -61,32 +61,20 @@ function JSServe.jsrender(session::Session, playbutton::PlayButton)
 end
 
 App() do
+    WGLMakie.activate!(resize_to=nothing)
     f, ax, p = scatter(1:4; markersize=40, axis=(backgroundcolor=:transparent,),
                        figure=(; backgroundcolor=:transparent, resolution=(500, 500)))
-    on_click_callback = js"""(plot, index) => {
-        // Which can be used to extract e.g. position or color:
-        const {pos} = plot.geometry.attributes
-        const x = pos.array[index*2] // everything is a flat array in JS
-        const y = pos.array[index*2+1]
-        // return either a string, or an HTMLNode:
-        return "Point: <" + x + ", " + y + ">"
-    }
-    """
-    # ToolTip(figurelike, js_callback; plots=plots_you_want_to_hover)
-    tooltip = WGLMakie.ToolTip(f, on_click_callback; plots=p)
     button = PlayButton(1:10)
     on(button.value) do i
         p[1] = 1:i
         return autolimits!(ax)
     end
     cards = DOM.div(D.Card("A"),
-                    D.Card(DOM.div(button; class="flex justify-center"); class="bg-indigo-500", width="50%"),
+                    D.Card(DOM.div(button; class="flex justify-center"); class="bg-indigo-500"),
                     D.Card("C"),
                     ; class="flex justify-center")
-    fcard = D.Card(scatter(rand(Point3f, 10)))
-    return DOM.div(JSServe.TailwindCSS,
-                   D.Card(DOM.div(cards, tooltip, fcard); width="50%",
-                          style="background-color: rgb(226 232 240)"))
+    plot = DOM.div(f; class="flex justify-center")
+    return DOM.div(JSServe.TailwindCSS,  D.Card(DOM.div(cards, plot)))
 end
 
 using WGLMakie, Makie, JSServe
@@ -96,7 +84,7 @@ function xy_data(x, y)
     return r == 0.0 ? 1.0f0 : (sin(r) / r)
 end
 App() do
-    WGLMakie.activate!(; resize_to_body=true)
+    WGLMakie.activate!(; resize_to=nothing)
     N = 60
 
     l = range(-10; stop=10, length=N)
@@ -104,7 +92,6 @@ App() do
 
     f1, ax, p = scatter(1:4; markersize=40, axis=(backgroundcolor=:transparent,),
                         figure=(; backgroundcolor=:transparent, size=(500, 500)))
-    DataInspector(ax)
     f2, ax, p = scatter(rand(Point3f, 10); axis=(scenekw=(; backgroundcolor=:transparent),),
                         figure=(; backgroundcolor=:transparent, size=(500, 500)))
     f3, ax, p = meshscatter(rand(Point3f, 10); axis=(scenekw=(; backgroundcolor=:transparent),),
@@ -112,11 +99,73 @@ App() do
     f4, ax, p = surface(-1 .. 1, -1 .. 1, z; colormap=:Spectral,
                         axis=(scenekw=(; backgroundcolor=:transparent),),
                         figure=(; backgroundcolor=:transparent, size=(500, 500)))
-    class = "w-96 p-6 shadow-lg shadow-blue-500/50"
-    cards = D.FlexGrid(D.Card(f1; class=class),
-                       D.Card(f2; class=class),
-                       D.Card(f3; class=class),
-                       D.Card(f4; class=class);
+    cards = D.FlexGrid(D.Card(WGLMakie.WithConfig(f1; resize_to=:parent)),
+                       D.Card(f2),
+                       D.Card(f3),
+                       D.Card(f4);
                        class="flex justify-center")
     return DOM.div(JSServe.TailwindCSS, cards)
+end
+
+
+using JSServe, WGLMakie, Colors
+import JSServe.TailwindDashboard as D
+JSServe.browser_display()
+
+to_css_color(color::Union{Symbol,String}) = color
+function to_css_color(color::Colorant)
+    rgba = convert(RGBA{Float64}, color)
+    return "rgba($(rgba.r * 255), $(rgba.g * 255), $(rgba.b * 255), $(rgba.alpha))"
+end
+
+function Card(content;
+              class="",
+              style="",
+              backgroundcolor=RGBA(1, 1, 1, 0.2),
+              shadow_size="0 4px 8px",
+              padding="6px",
+              margin="2px",
+              shadow_color=RGBA(0, 0, 0.2, 0.2),
+              width="fit-content",
+              height="fit-content",
+              attributes...)
+    css = """
+        display: block;
+        width: $(width);
+        height: $(height);
+        padding: $(padding);
+        margin: $(margin);
+        background-color: $(to_css_color(backgroundcolor));
+        border-radius: 10px;
+        box-shadow: $(shadow_size) $(to_css_color(shadow_color));
+    """
+
+    return DOM.div(content;
+                   style=css,
+                   attributes...)
+end
+
+using Random
+
+App() do
+    d = D.Dropdown("Dropdown", [randstring(5) for i in 1:100])
+    kw = (; figure=(; backgroundcolor=:transparent, size=(500, 500)), axis=(; backgroundcolor=(:gray, 0.2)))
+    WGLMakie.activate!(; resize_to=:parent)
+    c1 = Card(scatter(1:4; kw...); width="300px", height="300px")
+    c2 = Card(scatter(1:4; kw...); height="400px")
+    c3 = Card(scatter(1:4; kw...); width="600px")
+    c4 = Card(scatter(1:4; kw...); width="200px")
+    return DOM.div(JSServe.TailwindCSS, d, D.FlexGrid(c1, c2, c3, c4))
+end
+
+
+App() do
+    f, ax, pl = lines(cumsum(randn(1000)))
+    x_val = Observable(NaN)
+    vlines!(ax, x_val; color=:red)
+    on(ax.scene.events.mouseposition) do mp
+        w = Makie.mouseposition(ax.scene)
+        x_val[] = w[1]
+    end
+    return DOM.div(f)
 end
